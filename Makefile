@@ -58,5 +58,8 @@ notebook_image: pull singleuser/Dockerfile
 
 build: check-files network volumes
 	docker-compose build
+update_document:
+	sudo find /raid/nfs/ -maxdepth 1 -name 'jupyterhub-user-*' -exec cp ~/jupyterhub-deploy-docker/singleuser/DGX環境說明書.ipynb {} \;
+
 
 .PHONY: network volumes check-files pull notebook_image build
