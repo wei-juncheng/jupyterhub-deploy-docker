@@ -14,19 +14,52 @@ c = get_config()
 c.JupyterHub.spawner_class = 'dockerspawner.DockerSpawner'
 # Spawn containers from this image
 c.DockerSpawner.container_image = os.environ['DOCKER_NOTEBOOK_IMAGE']
+import docker
 # JupyterHub requires a single-user instance of the Notebook server, so we
 # default to using the `start-singleuser.sh` script included in the
 # jupyter/docker-stacks *-notebook images as the Docker run command when
 # spawning containers.  Optionally, you can override the Docker run command
 # using the DOCKER_SPAWN_CMD environment variable.
 spawn_cmd = os.environ.get('DOCKER_SPAWN_CMD', "start-singleuser.sh")
-c.DockerSpawner.extra_create_kwargs.update({ 'command': spawn_cmd })
+c.DockerSpawner.extra_create_kwargs.update({ 
+    'runtime': 'nvidia',
+    'user':'root',
+    'command': spawn_cmd
+    })
+c.DockerSpawner.environment = {
+  'GRANT_SUDO': '1',
+  'UID': '0', # workaround https://github.com/jupyter/docker-stacks/pull/420
+}
 # Connect containers to this Docker network
 network_name = os.environ['DOCKER_NETWORK_NAME']
 c.DockerSpawner.use_internal_ip = True
 c.DockerSpawner.network_name = network_name
 # Pass the network name as argument to spawned containers
-c.DockerSpawner.extra_host_config = { 'network_mode': network_name }
+# mounts = [
+#     {
+#         'type' : 'volume',
+#         'target' : os.environ.get('SWARMSPAWNER_NOTEBOOK_DIR'),
+#         'source' : 'jupyterhub-user-{username}',
+#         'no_copy' : True,
+#         'driver_config' : {
+#             'name' : 'local',
+#             'options' : {
+#                 'type' : 'nfs4',
+#                 'o' : 'addr='+os.environ.get('NFSSERVER_IP')+',rw',
+#                 'device' : ':'+os.environ.get('NFSSERVER_USERDATA_DEVICE')
+#             }
+#         }
+#     }]
+
+c.DockerSpawner.extra_host_config = { 
+    "device_requests": [
+        docker.types.DeviceRequest(
+            count=-1,
+            capabilities=[["gpu"]],
+        ),
+    ],
+    'network_mode': network_name 
+}
 # Explicitly set notebook directory because we'll be mounting a host volume to
 # it.  Most jupyter/docker-stacks *-notebook images run the Notebook server as
 # user `jovyan`, and set the notebook directory to `/home/jovyan/work`.
@@ -35,11 +68,11 @@ notebook_dir = os.environ.get('DOCKER_NOTEBOOK_DIR') or '/home/jovyan/work'
 c.DockerSpawner.notebook_dir = notebook_dir
 # Mount the real user's Docker volume on the host to the notebook user's
 # notebook directory in the container
-c.DockerSpawner.volumes = { 'jupyterhub-user-{username}': notebook_dir }
+c.DockerSpawner.volumes = { 'jupyterhub-user-{username}': notebook_dir, '/raid/nfs/jupyterhub-user-{username}': '/home/jovyan' }
 # volume_driver is no longer a keyword argument to create_container()
 # c.DockerSpawner.extra_create_kwargs.update({ 'volume_driver': 'local' })
 # Remove containers once they are stopped
-c.DockerSpawner.remove_containers = True
+c.DockerSpawner.remove_containers = False
 # For debugging arguments passed to spawned containers
 c.DockerSpawner.debug = True
 
